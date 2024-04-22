@@ -26,6 +26,16 @@ void copyFiles(const std::string& sourceDir, const std::string& targetDir) {
         }
     }
 }
+void listFiles(const std::string& directory) {
+    for (const auto& entry : fs::directory_iterator(directory)) {
+        if (fs::is_regular_file(entry.path())) {
+            std::cout << entry.path() << std::endl;
+
+        }
+    }
+}
+
+
 int main() {
     std::string sourceDir;
     std::cout << "Enter the source directory:";
@@ -38,9 +48,13 @@ int main() {
     scanDirectory(sourceDir);
     copyFiles(sourceDir, targetDir);
     std::cout << "Backup completed successfully." << std::endl;
+
+    std::cout << "Files in source directory:" << std::endl;
+    listFiles(sourceDir);
     } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
+        std::cerr << "Error " << e.what() << std::endl;
         return 1;
+    
     }
     return 0;
 }
