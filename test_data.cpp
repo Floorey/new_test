@@ -27,7 +27,11 @@ void copyFiles(const std::string& sourceDir, const std::string& targetDir) {
     }
 }
 int main() {
-    const std::string sourceDir = "/home/lukase/Dokumente";
+    std::string sourceDir;
+    std::cout << "Enter the source directory:";
+    std::cin >> sourceDir;
+
+
     const std::string targetDir = "/run/media/lukase/USB-STICK/Test1";
 
     try {
