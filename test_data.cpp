@@ -1,57 +1,73 @@
 #include <exception>
-#include <ios>
 #include <iostream>
 #include <filesystem>
 #include <fstream>
-#include <ostream>
 #include <string>
-#include <stdexcept>
 #include <vector>
-#include <cstdlib>
-#include <sstream>
-#include <iomanip>
-#include <chrono>
-#include <ctime>
-#include <iomanip>
-#include <algorithm>
+#include <thread>
+#include <mutex>
 
-// include compresionbobilotek
+// Include for Boost Iostreams for compression
 #include <boost/iostreams/filtering_stream.hpp>
 #include <boost/iostreams/copy.hpp>
 #include <boost/iostreams/filter/gzip.hpp>
 
 namespace fs = std::filesystem;
 
+// Mutex for critical sections
+std::mutex mtx;
 
-void compressFiles(const std::string& sourceDir, const std::string& targetDir) {
+// Function to compress a single file
+void compressFiles(const std::string& sourceDir, const std::string& targetDir, const std::vector<std::string>& includeExtensions, const std::vector<std::string>& excludeExtensions) {
     for (const auto& entry : fs::recursive_directory_iterator(sourceDir)) {
         const auto& sourcePath = entry.path();
-        auto relativPath = sourcePath.lexically_relative(fs::path(sourceDir));
-        auto targetPath = fs::path(targetDir) / (relativPath.string() + ".gz");
+        auto relativePath = sourcePath.lexically_relative(fs::path(sourceDir));
+        auto targetPath = fs::path(targetDir) / (relativePath.string() + ".gz");
 
         if (fs::is_regular_file(sourcePath)) {
+            // Check if the file extension should be included or excluded
+            std::string extension = sourcePath.extension().string();
+            bool include = includeExtensions.empty(); // If includeExtensions is empty, include all files by default
+            for (const auto& includeExt : includeExtensions) {
+                if (extension == includeExt) {
+                    include = true;
+                    break;
+                }
+            }
+            for (const auto& excludeExt : excludeExtensions) {
+                if (extension == excludeExt) {
+                    include = false;
+                    break;
+                }
+            }
+
+            if (!include) {
+                std::cout << "Skipping file: " << sourcePath << std::endl;
+                continue;
+            }
+
             fs::create_directories(targetPath.parent_path());
 
-            // Dateistrom zum Lesen öffnen
+            // Open file stream for reading
             std::ifstream sourceFile(sourcePath, std::ios_base::binary);
             if (!sourceFile.is_open()) {
                 std::cerr << "Failed to open source file: " << sourcePath << std::endl;
-                continue; // Überspringen Sie diese Datei und fahren Sie mit der nächsten fort
+                continue; // Skip this file and move to the next one
             }
 
-            // Dateistrom zum Schreiben als .gz-Datei öffnen
+            // Open file stream for writing as .gz file
             std::ofstream targetFile(targetPath.string(), std::ios_base::binary);
             if (!targetFile.is_open()) {
                 std::cerr << "Failed to open target file: " << targetPath << std::endl;
-                continue; // Überspringen Sie diese Datei und fahren Sie mit der nächsten fort
+                continue; // Skip this file and move to the next one
             }
 
-            // Filtering Stream einrichten
+            // Setup filtering stream
             boost::iostreams::filtering_ostream out;
             out.push(boost::iostreams::gzip_compressor());
             out.push(targetFile);
 
-            // Datei kopieren und komprimieren
+            // Copy file and compress
             try {
                 boost::iostreams::copy(sourceFile, out);
                 std::cout << "File compressed: " << sourcePath << std::endl;
@@ -59,59 +75,100 @@ void compressFiles(const std::string& sourceDir, const std::string& targetDir) {
                 std::cerr << "Error compressing file: " << e.what() << std::endl;
             }
 
-            // Dateistrom schließen
+            // Close file streams
             sourceFile.close();
             targetFile.close();
         }
     }
 }
 
-
-void scanDirectory(const std::string& directory) {
-    for (const auto& entry : fs::directory_iterator(directory)) {
-        if (entry.is_directory()) {
-            fs::create_directories(entry.path());
-        }
-    }
-}
-void copyFiles(const std::string& sourceDir, const std::string& targetDir) {
-    for (const auto& entry : fs::recursive_directory_iterator(sourceDir)) {
-        const auto& sourcePath = entry.path();
-        auto relativPath = sourcePath.lexically_relative(fs::path(sourceDir));
-        auto targetPath = fs::path(targetDir) / relativPath;
+// Function executed by each thread to process files
+void processFiles(const std::vector<fs::path>& files, const std::string& sourceDir, const std::string& targetDir) {
+    for (const auto& sourcePath : files) {
+        auto relativePath = sourcePath.lexically_relative(fs::path(sourceDir));
+        auto targetPath = fs::path(targetDir) / (relativePath.string() + ".gz");
 
         if (fs::is_regular_file(sourcePath)) {
             fs::create_directories(targetPath.parent_path());
-            fs::copy_file(sourcePath, targetPath, fs::copy_options::overwrite_existing);
+
+            std::ifstream sourceFile(sourcePath, std::ios_base::binary);
+            if (!sourceFile.is_open()){
+                std::cerr << "Failed to open source file:" << sourcePath << std::endl;
+                continue;
+            }
+
+            std::ofstream targetFile(targetPath.string(), std::ios_base::binary);
+            if (!targetFile.is_open()) {
+                std::cerr << "Failed to open target file: " << targetPath << std::endl;
+                continue;
+            }
+
+            boost::iostreams::filtering_ostream out;
+            out.push(boost::iostreams::gzip_compressor());
+            out.push(targetFile);
+
+            try {
+                boost::iostreams::copy(sourceFile, out);
+                std::cout << "File compressed: " << sourcePath << std::endl;
+            } catch (const std::exception& e) {
+                std::cerr << "Error compressing file: " << e.what() << std::endl;
+            }
+
+            sourceFile.close();
+            targetFile.close();
         }
     }
 }
-void listFiles(const std::string& directory) {
+
+void listFiles(const std::string& directory, std::vector<fs::path>& files, const std::vector<std::string>& excludedExtensions) {
     for (const auto& entry : fs::directory_iterator(directory)) {
         if (fs::is_regular_file(entry.path())) {
-            std::cout << entry.path() << std::endl;
-
+            bool excludeFile = false;
+            for (const auto& extension : excludedExtensions)  {
+                if (entry.path().extension() == "." + extension) {
+                    excludeFile = true;
+                    break;
+                }
+            }
+            if(!excludeFile) {
+                files.push_back(entry.path());
+            }
         }
     }
 }
-
 
 int main() {
     std::string sourceDir;
     std::cout << "Enter the source directory:";
     std::cin >> sourceDir;
 
+    std::cout << "Files in source directory: " << std::endl; 
+    std::vector<fs::path> files;
+    listFiles(sourceDir, files, {});
 
     const std::string targetDir = "/run/media/lukase/USB-STICK/Test1";
 
-    try {
-    compressFiles(sourceDir, targetDir);
-    std::cout << "Backup completed successfully." << std::endl;
-    } catch (const std::exception& e) {
-        std::cerr << "Error " << e.what() << std::endl;
-        return 1;
-    
+    // Number of threads equal to the number of CPU cores
+    unsigned int numThreads = std::thread::hardware_concurrency();
+
+    // Group files into partial lists for each thread
+    std::vector<std::vector<fs::path>> fileChunks(numThreads);
+    for (size_t i = 0; i < files.size(); ++i) {
+        fileChunks[i % numThreads].push_back(files[i]);
     }
-    
+
+    // Start threads for each partial list of files
+    std::vector<std::thread> threads;
+    for (size_t i = 0; i < numThreads; ++i) {
+        threads.emplace_back(processFiles, fileChunks[i], sourceDir, targetDir);
+    }
+
+    // Wait for all threads to finish
+    for (auto& thread : threads) {
+        thread.join();
+    }
+
+    std::cout << "Backup completed successfully." << std::endl;
+
     return 0;
 }
