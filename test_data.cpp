@@ -1,7 +1,12 @@
+#include <chrono>
+#include <ctime>
 #include <exception>
+#include <iomanip>
+#include <ios>
 #include <iostream>
 #include <filesystem>
 #include <fstream>
+#include <locale>
 #include <string>
 #include <vector>
 #include <thread>
@@ -16,6 +21,32 @@ namespace fs = std::filesystem;
 
 // Mutex for critical sections
 std::mutex mtx;
+
+void logBackup(const std::string& logFile, const std::string& message) {
+    // Check if the log file exists and create it if necessary
+    if (!std::filesystem::exists(logFile)) {
+        std::ofstream ofs(logFile);
+        if (!ofs.is_open()) {
+            std::cerr << "Failed to create log file: " << logFile << std::endl;
+            return;
+        }
+    }
+
+    // Open the log file in append mode
+    std::ofstream ofs(logFile, std::ios_base::app);
+    if (!ofs.is_open()) {
+        std::cerr << "Failed to open log file: " << logFile << std::endl;
+        return;
+    }
+
+    // Timestamp for the log
+    auto now = std::chrono::system_clock::now();
+    auto now_c = std::chrono::system_clock::to_time_t(now);
+
+    // Write the log with timestamp
+    ofs << std::put_time(std::localtime(&now_c), "%F %T") << " - " << message << std::endl;
+}
+
 
 // Function to compress a single file
 void compressFiles(const std::string& sourceDir, const std::string& targetDir, const std::vector<std::string>& includeExtensions, const std::vector<std::string>& excludeExtensions) {
@@ -147,6 +178,12 @@ int main() {
     listFiles(sourceDir, files, {});
 
     const std::string targetDir = "/run/media/lukase/USB-STICK/Test1";
+
+    const std::string logFile = "/home/lukase/Dokumente/backup_log.txt";
+
+    logBackup(logFile, "Listing files completed.");
+
+    
 
     // Number of threads equal to the number of CPU cores
     unsigned int numThreads = std::thread::hardware_concurrency();
