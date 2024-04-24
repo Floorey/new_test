@@ -1,0 +1,3 @@
+/home/lukase/Dokumente/new_test/build/CMakeFiles/test_data.dir
+/home/lukase/Dokumente/new_test/build/CMakeFiles/edit_cache.dir
+/home/lukase/Dokumente/new_test/build/CMakeFiles/rebuild_cache.dir

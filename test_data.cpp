@@ -6,7 +6,7 @@
 #include <iostream>
 #include <filesystem>
 #include <fstream>
-#include <locale>
+
 #include <string>
 #include <vector>
 #include <thread>
@@ -177,13 +177,14 @@ int main() {
     std::vector<fs::path> files;
     listFiles(sourceDir, files, {});
 
-    const std::string targetDir = "/run/media/lukase/USB-STICK/Test1";
+    std::string targetDir;
+    std::cout << "Enter the target directory:";
+    std::cin >> targetDir;
 
     const std::string logFile = "/home/lukase/Dokumente/backup_log.txt";
 
     logBackup(logFile, "Listing files completed.");
 
-    
 
     // Number of threads equal to the number of CPU cores
     unsigned int numThreads = std::thread::hardware_concurrency();
